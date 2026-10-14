@@ -12,7 +12,7 @@ export interface ControlsCallbacks {
   onSeek: (fraction: number) => void;
   /** Scrub drag started (mousedown/touchstart on the scrubber). */
   onScrubStart?: () => void;
-  /** Scrub drag ended (mouseup/touchend). */
+  /** Scrub drag ended (mouseup/touchend/touchcancel). */
   onScrubEnd?: () => void;
   onSpeedChange: (speed: number) => void;
   onMuteToggle: () => void;
@@ -186,6 +186,17 @@ export function createControls(
     callbacks.onMuteToggle();
   });
 
+  // After a tap, mobile browsers (iOS Safari, Android Chrome) fire emulated
+  // mousedown/mouseup for compatibility. The touch handlers already handled the
+  // gesture, so a mousedown right after a touch would seek and start/end the
+  // scrub a second time.
+  const TOUCH_MOUSE_GUARD_MS = 800;
+  let lastTouchTime = Number.NEGATIVE_INFINITY;
+  const markTouch = (e: Event) => {
+    lastTouchTime = e.timeStamp;
+  };
+  const isEmulatedMouse = (e: MouseEvent) => e.timeStamp - lastTouchTime < TOUCH_MOUSE_GUARD_MS;
+
   let volumeScrubbing = false;
 
   const handleVolumeAt = (clientX: number) => {
@@ -201,6 +212,7 @@ export function createControls(
 
   volumeSlider.addEventListener("mousedown", (e) => {
     e.stopPropagation();
+    if (isEmulatedMouse(e)) return;
     volumeScrubbing = true;
     handleVolumeAt(e.clientX);
   });
@@ -216,6 +228,7 @@ export function createControls(
   volumeSlider.addEventListener(
     "touchstart",
     (e) => {
+      markTouch(e);
       volumeScrubbing = true;
       const touch = e.touches[0];
       if (touch) handleVolumeAt(touch.clientX);
@@ -228,11 +241,15 @@ export function createControls(
       if (touch) handleVolumeAt(touch.clientX);
     }
   };
-  const onVolumeTouchEnd = () => {
+  const onVolumeTouchEnd = (e: TouchEvent) => {
+    if (volumeScrubbing) markTouch(e);
     volumeScrubbing = false;
   };
   document.addEventListener("touchmove", onVolumeTouchMove, { passive: true });
   document.addEventListener("touchend", onVolumeTouchEnd);
+  // iOS cancels the touch on system gestures (edge swipes, notifications); treat
+  // it like touchend so the slider does not stay stuck in the scrubbing state.
+  document.addEventListener("touchcancel", onVolumeTouchEnd);
 
   const VOLUME_STEP = 0.05;
   volumeSlider.addEventListener("keydown", (e) => {
@@ -296,6 +313,7 @@ export function createControls(
 
   scrubber.addEventListener("mousedown", (e) => {
     e.stopPropagation();
+    if (isEmulatedMouse(e)) return;
     scrubbing = true;
     callbacks.onScrubStart?.();
     handleScrubAt(e.clientX);
@@ -315,6 +333,7 @@ export function createControls(
   scrubber.addEventListener(
     "touchstart",
     (e) => {
+      markTouch(e);
       scrubbing = true;
       callbacks.onScrubStart?.();
       const touch = e.touches[0];
@@ -328,14 +347,16 @@ export function createControls(
       if (touch) handleScrubAt(touch.clientX);
     }
   };
-  const onTouchEnd = () => {
+  const onTouchEnd = (e: TouchEvent) => {
     if (scrubbing) {
+      markTouch(e);
       scrubbing = false;
       callbacks.onScrubEnd?.();
     }
   };
   document.addEventListener("touchmove", onTouchMove, { passive: true });
   document.addEventListener("touchend", onTouchEnd);
+  document.addEventListener("touchcancel", onTouchEnd);
 
   const startHideTimer = () => {
     if (hideTimeout) clearTimeout(hideTimeout);
@@ -352,8 +373,16 @@ export function createControls(
   const onHostMouseLeave = () => {
     if (isPlaying) controls.classList.add("hfp-hidden");
   };
+  // Touch devices never fire mousemove before a tap, so once the overlay
+  // auto-hides during playback there is no hover to bring it back. Reveal it on
+  // any touch on the player and restart the hide timer.
+  const onHostTouchStart = () => {
+    controls.classList.remove("hfp-hidden");
+    startHideTimer();
+  };
   host.addEventListener("mousemove", onHostMouseMove);
   host.addEventListener("mouseleave", onHostMouseLeave);
+  host.addEventListener("touchstart", onHostTouchStart, { passive: true });
 
   return {
     updateTime(current: number, duration: number) {
@@ -401,13 +430,16 @@ export function createControls(
       document.removeEventListener("mouseup", onMouseUp);
       document.removeEventListener("touchmove", onTouchMove);
       document.removeEventListener("touchend", onTouchEnd);
+      document.removeEventListener("touchcancel", onTouchEnd);
       document.removeEventListener("mousemove", onVolumeMouseMove);
       document.removeEventListener("mouseup", onVolumeMouseUp);
       document.removeEventListener("touchmove", onVolumeTouchMove);
       document.removeEventListener("touchend", onVolumeTouchEnd);
+      document.removeEventListener("touchcancel", onVolumeTouchEnd);
       document.removeEventListener("click", onDocClick);
       host.removeEventListener("mousemove", onHostMouseMove);
       host.removeEventListener("mouseleave", onHostMouseLeave);
+      host.removeEventListener("touchstart", onHostTouchStart);
       if (hideTimeout) clearTimeout(hideTimeout);
       controls.remove();
     },
