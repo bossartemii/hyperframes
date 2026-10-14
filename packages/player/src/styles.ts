@@ -234,6 +234,10 @@ export const PLAYER_STYLES = /* css */ `
     opacity: 1;
     transition: opacity 0.3s ease;
     user-select: none;
+    -webkit-user-select: none;
+    /* iOS: no long-press callout or grey tap flash on the overlay. */
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
   }
 
   .hfp-controls.hfp-hidden {
@@ -257,8 +261,10 @@ export const PLAYER_STYLES = /* css */ `
     z-index: 10;
   }
 
-  .hfp-play-btn:hover {
-    opacity: 0.8;
+  @media (hover: hover) {
+    .hfp-play-btn:hover {
+      opacity: 0.8;
+    }
   }
 
   /* Stacked play/pause glyphs that crossfade-morph on toggle (rotate + scale). */
@@ -308,10 +314,13 @@ export const PLAYER_STYLES = /* css */ `
     cursor: pointer;
     position: relative;
     overflow: hidden;
+    touch-action: none;
   }
 
-  .hfp-scrubber:hover {
-    height: var(--hfp-scrubber-height-hover, 6px);
+  @media (hover: hover) {
+    .hfp-scrubber:hover {
+      height: var(--hfp-scrubber-height-hover, 6px);
+    }
   }
 
   .hfp-progress {
@@ -350,8 +359,10 @@ export const PLAYER_STYLES = /* css */ `
     transition: background 0.15s ease;
   }
 
-  .hfp-speed-btn:hover {
-    background: var(--hfp-speed-btn-bg-hover, rgba(255, 255, 255, 0.3));
+  @media (hover: hover) {
+    .hfp-speed-btn:hover {
+      background: var(--hfp-speed-btn-bg-hover, rgba(255, 255, 255, 0.3));
+    }
   }
 
   .hfp-speed-menu {
@@ -396,9 +407,11 @@ export const PLAYER_STYLES = /* css */ `
     white-space: nowrap;
   }
 
-  .hfp-speed-option:hover {
-    background: var(--hfp-menu-hover-bg, rgba(255, 255, 255, 0.1));
-    color: var(--hfp-color, #fff);
+  @media (hover: hover) {
+    .hfp-speed-option:hover {
+      background: var(--hfp-menu-hover-bg, rgba(255, 255, 255, 0.1));
+      color: var(--hfp-color, #fff);
+    }
   }
 
   .hfp-speed-option.hfp-active {
@@ -428,8 +441,10 @@ export const PLAYER_STYLES = /* css */ `
     flex-shrink: 0;
   }
 
-  .hfp-mute-btn:hover {
-    opacity: 0.8;
+  @media (hover: hover) {
+    .hfp-mute-btn:hover {
+      opacity: 0.8;
+    }
   }
 
   .hfp-mute-btn svg,
@@ -459,6 +474,7 @@ export const PLAYER_STYLES = /* css */ `
     overflow: hidden;
     margin-left: 4px;
     margin-right: 4px;
+    touch-action: none;
   }
 
   .hfp-volume-fill {
@@ -468,6 +484,46 @@ export const PLAYER_STYLES = /* css */ `
     height: 100%;
     background: var(--hfp-accent, #fff);
     pointer-events: none;
+  }
+
+  /* Touch screens (phones, tablets): the volume slider only opens on hover,
+     which a finger cannot do, and iOS ignores HTMLMediaElement.volume anyway.
+     Keep the mute toggle and enlarge the hit targets toward the 44px minimum. */
+  @media (hover: none) and (pointer: coarse) {
+    .hfp-volume-slider-wrap {
+      display: none;
+    }
+
+    .hfp-mute-btn {
+      width: 40px;
+      height: 40px;
+    }
+
+    .hfp-speed-btn {
+      min-height: 32px;
+    }
+
+    .hfp-speed-option {
+      padding: 10px 14px;
+    }
+
+    /* A 4px bar is too thin to hit: pad the touch area, not the visible track. */
+    .hfp-scrubber {
+      overflow: visible;
+    }
+
+    .hfp-progress {
+      border-radius: inherit;
+    }
+
+    .hfp-scrubber::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: -14px;
+      bottom: -14px;
+    }
   }
 `;
 

@@ -76,3 +76,91 @@ describe("createControls host listeners", () => {
     host.remove();
   });
 });
+
+function touchEvent(type: string, clientX: number, timeStamp: number): Event {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "touches", {
+    value: type === "touchend" || type === "touchcancel" ? [] : [{ clientX }],
+  });
+  Object.defineProperty(event, "timeStamp", { value: timeStamp });
+  return event;
+}
+
+function mouseEvent(type: string, clientX: number, timeStamp: number): MouseEvent {
+  const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX });
+  Object.defineProperty(event, "timeStamp", { value: timeStamp });
+  return event;
+}
+
+describe("createControls touch input", () => {
+  function setup(callbacks: Partial<ControlsCallbacks> = {}) {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const api = createControls(host, { ...noopCallbacks(), ...callbacks });
+    const controls = host.querySelector<HTMLElement>(".hfp-controls")!;
+    const scrubber = host.querySelector<HTMLElement>(".hfp-scrubber")!;
+    vi.spyOn(scrubber, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 200, 4));
+    const cleanup = () => {
+      api.destroy();
+      host.remove();
+    };
+    return { host, api, controls, scrubber, cleanup };
+  }
+
+  it("reveals auto-hidden controls when the player is touched", () => {
+    const { host, api, controls, cleanup } = setup();
+    api.updatePlaying(true);
+    controls.classList.add("hfp-hidden");
+
+    host.dispatchEvent(touchEvent("touchstart", 10, 0));
+
+    expect(controls.classList.contains("hfp-hidden")).toBe(false);
+    cleanup();
+  });
+
+  it("ignores the emulated mouse events a tap on the scrubber produces", () => {
+    const onSeek = vi.fn();
+    const onScrubStart = vi.fn();
+    const onScrubEnd = vi.fn();
+    const { scrubber, cleanup } = setup({ onSeek, onScrubStart, onScrubEnd });
+
+    scrubber.dispatchEvent(touchEvent("touchstart", 50, 1000));
+    document.dispatchEvent(touchEvent("touchend", 50, 1050));
+    scrubber.dispatchEvent(mouseEvent("mousedown", 50, 1100));
+    document.dispatchEvent(mouseEvent("mouseup", 50, 1110));
+
+    expect(onSeek).toHaveBeenCalledTimes(1);
+    expect(onSeek).toHaveBeenCalledWith(0.25);
+    expect(onScrubStart).toHaveBeenCalledTimes(1);
+    expect(onScrubEnd).toHaveBeenCalledTimes(1);
+    cleanup();
+  });
+
+  it("still handles a real mouse press long after a touch", () => {
+    const onSeek = vi.fn();
+    const { scrubber, cleanup } = setup({ onSeek });
+
+    scrubber.dispatchEvent(touchEvent("touchstart", 50, 1000));
+    document.dispatchEvent(touchEvent("touchend", 50, 1050));
+    scrubber.dispatchEvent(mouseEvent("mousedown", 100, 5000));
+
+    expect(onSeek).toHaveBeenLastCalledWith(0.5);
+    expect(onSeek).toHaveBeenCalledTimes(2);
+    cleanup();
+  });
+
+  it("ends the scrub when the system cancels the touch", () => {
+    const onScrubEnd = vi.fn();
+    const onSeek = vi.fn();
+    const { scrubber, cleanup } = setup({ onScrubEnd, onSeek });
+
+    scrubber.dispatchEvent(touchEvent("touchstart", 50, 0));
+    document.dispatchEvent(touchEvent("touchcancel", 50, 10));
+    expect(onScrubEnd).toHaveBeenCalledTimes(1);
+
+    // A later stray touchmove must not keep seeking.
+    document.dispatchEvent(touchEvent("touchmove", 150, 20));
+    expect(onSeek).toHaveBeenCalledTimes(1);
+    cleanup();
+  });
+});
